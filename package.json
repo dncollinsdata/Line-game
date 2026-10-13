@@ -30,7 +30,8 @@
     "web": "expo start --web",
     "test": "jest",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "generate-levels": "tsc -p scripts/tsconfig.json && node .levelgen/scripts/generate-levels.js"
   },
   "private": true
 }

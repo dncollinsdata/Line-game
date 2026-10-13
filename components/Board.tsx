@@ -15,6 +15,10 @@ interface BoardProps {
    * order even when several touch events arrive before the next render.
    */
   onPathChange: (update: (previous: number[]) => number[]) => void;
+  /** Finger down on the board. */
+  onStrokeStart?: () => void;
+  /** Finger lifted or gesture cancelled. */
+  onStrokeEnd?: () => void;
   /** Board width in px. */
   boardPx: number;
 }
@@ -24,27 +28,35 @@ interface BoardProps {
  * touches is handed to the engine's applyCell, which decides what (if anything)
  * changes. Touch-down on a path cell truncates to it, which also covers taps.
  */
-export function Board({ puzzle, path, onPathChange, boardPx }: BoardProps) {
+export function Board({ puzzle, path, onPathChange, onStrokeStart, onStrokeEnd, boardPx }: BoardProps) {
   const layout = useMemo(() => makeLayout(puzzle.size, boardPx), [puzzle.size, boardPx]);
 
-  const handlePoint = (x: number, y: number) => {
-    const cell = cellAtPoint(layout, x, y);
-    if (cell === null) return;
-    // applyCell returns the previous array when nothing changes, so React
-    // skips the re-render for touch events that stay inside the head cell.
-    onPathChange((previous) => applyCell(puzzle, previous, cell));
-  };
-
-  // Rebuilt every render on purpose: GestureDetector updates the live handler
-  // in place, and the callbacks then always see the current props.
-  const gesture = Gesture.Pan()
-    .runOnJS(true)
-    .minDistance(2)
-    .maxPointers(1)
-    .shouldCancelWhenOutside(false)
-    .withTestId('board-pan')
-    .onBegin((e) => handlePoint(e.x, e.y))
-    .onUpdate((e) => handlePoint(e.x, e.y));
+  // The gesture never reads `path` directly: every touched cell is sent as an
+  // updater, so the gesture object only has to change when the puzzle, the
+  // layout, or the callbacks change. That keeps one handler alive for the
+  // whole stroke instead of rebuilding it on every path update.
+  const gesture = useMemo(() => {
+    const handlePoint = (x: number, y: number) => {
+      const cell = cellAtPoint(layout, x, y);
+      if (cell === null) return;
+      // applyCell returns the previous array when nothing changes, so React
+      // skips the re-render for touch events that stay inside the head cell.
+      onPathChange((previous) => applyCell(puzzle, previous, cell));
+    };
+    return Gesture.Pan()
+      .runOnJS(true)
+      .minDistance(2)
+      .maxPointers(1)
+      .shouldCancelWhenOutside(false)
+      .withTestId('board-pan')
+      .onBegin((e) => {
+        onStrokeStart?.();
+        handlePoint(e.x, e.y);
+      })
+      .onStart((e) => handlePoint(e.x, e.y))
+      .onUpdate((e) => handlePoint(e.x, e.y))
+      .onFinalize(() => onStrokeEnd?.());
+  }, [layout, puzzle, onPathChange, onStrokeStart, onStrokeEnd]);
 
   const onPathSet = useMemo(() => new Set(path), [path]);
   const reachedUpTo = nextCheckpoint(puzzle, path) - 1;

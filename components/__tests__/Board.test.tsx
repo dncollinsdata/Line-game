@@ -4,9 +4,12 @@ import { State } from 'react-native-gesture-handler';
 import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 import type { PanGesture } from 'react-native-gesture-handler';
 import { Board } from '../Board';
-import { HARDCODED_PUZZLE } from '../../app/hardcodedPuzzle';
+import { LEVELS } from '../../lib/levels';
 import { cellAtPoint, cellCenter, makeLayout } from '../layout';
 import { Text } from 'react-native';
+
+// Level 20 is the last 7x7 in the pack; any 7x7 works for these tests.
+const HARDCODED_PUZZLE = LEVELS[LEVELS.length - 1];
 
 jest.mock('@shopify/react-native-skia', () => {
   const { View } = jest.requireActual('react-native');
@@ -14,7 +17,7 @@ jest.mock('@shopify/react-native-skia', () => {
 });
 
 describe('Board', () => {
-  it('renders every cell and checkpoint label for the hardcoded puzzle', () => {
+  it('renders every cell and checkpoint label for the hardcoded puzzle', async () => {
     let renderer!: ReturnType<typeof create>;
     act(() => {
       renderer = create(
@@ -25,15 +28,18 @@ describe('Board', () => {
     expect(texts.map((t) => t.props.children)).toEqual(
       HARDCODED_PUZZLE.checkpoints.map((_, i) => i + 1),
     );
-    act(() => renderer.unmount());
+    await act(async () => renderer.unmount());
   });
 
-  it('extends the path as a drag passes through cells and truncates on the way back', () => {
+  it('extends the path as a drag passes through cells and truncates on the way back', async () => {
     const layout = makeLayout(7, 350);
     const start = HARDCODED_PUZZLE.checkpoints[0]; // cell 22: row 3, col 1
     let path: number[] = [];
+    const seen: number[][] = [];
     const onPathChange = (update: (previous: number[]) => number[]) => {
-      path = update(path);
+      const next = update(path);
+      if (next !== path) seen.push(next);
+      path = next;
     };
     let renderer!: ReturnType<typeof create>;
     act(() => {
@@ -44,15 +50,17 @@ describe('Board', () => {
     const at = (cell: number) => cellCenter(layout, cell);
     act(() => {
       fireGestureHandler<PanGesture>(getByGestureTestId('board-pan'), [
-        { state: State.BEGAN, ...at(start) },
-        { state: State.ACTIVE, ...at(start + 1) },
+        { state: State.BEGAN, ...at(start) }, // onBegin
+        { state: State.ACTIVE, ...at(start) }, // onStart
+        { ...at(start + 1) },
         { ...at(start + 2) },
         { ...at(start + 1) }, // drag back: removes the last step
         { state: State.END, ...at(start + 1) },
       ]);
     });
     expect(path).toEqual([start, start + 1]);
-    act(() => renderer.unmount());
+    expect(seen).toEqual([[start], [start, start + 1], [start, start + 1, start + 2], [start, start + 1]]);
+    await act(async () => renderer.unmount());
   });
 });
 
