@@ -6,3 +6,4 @@ export * from './solver';
 export * from './difficulty';
 export * from './generate';
 export * from './ascii';
+export * from './pathEdit';
