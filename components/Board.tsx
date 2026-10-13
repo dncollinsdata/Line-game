@@ -21,6 +21,8 @@ interface BoardProps {
   onStrokeEnd?: () => void;
   /** Board width in px. */
   boardPx: number;
+  /** Plays the win sweep along the path. */
+  celebrate?: boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface BoardProps {
  * touches is handed to the engine's applyCell, which decides what (if anything)
  * changes. Touch-down on a path cell truncates to it, which also covers taps.
  */
-export function Board({ puzzle, path, onPathChange, onStrokeStart, onStrokeEnd, boardPx }: BoardProps) {
+export function Board({ puzzle, path, onPathChange, onStrokeStart, onStrokeEnd, boardPx, celebrate = false }: BoardProps) {
   const layout = useMemo(() => makeLayout(puzzle.size, boardPx), [puzzle.size, boardPx]);
 
   // The gesture never reads `path` directly: every touched cell is sent as an
@@ -80,7 +82,7 @@ export function Board({ puzzle, path, onPathChange, onStrokeStart, onStrokeEnd, 
     <GestureDetector gesture={gesture}>
       <View style={[styles.board, { width: boardPx, height: boardPx }]} collapsable={false}>
         {cells}
-        <PathLayer layout={layout} path={path} />
+        <PathLayer layout={layout} path={path} celebrate={celebrate} />
         {puzzle.checkpoints.map((cell, i) => (
           <CheckpointLabel
             key={cell}

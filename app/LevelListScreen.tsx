@@ -1,5 +1,6 @@
-import React from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback } from 'react';
+import { FlatList, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { eventsAsJson } from '../lib/eventLog';
 import { LEVELS, LevelDefinition } from '../lib/levels';
 
 interface LevelListScreenProps {
@@ -8,6 +9,16 @@ interface LevelListScreenProps {
 }
 
 export function LevelListScreen({ completed, onSelectLevel }: LevelListScreenProps) {
+  // Hidden debug action: long-press the title to share the event log as JSON.
+  const shareEventLog = useCallback(async () => {
+    try {
+      const json = await eventsAsJson();
+      await Share.share({ title: 'Pathline event log', message: json });
+    } catch {
+      // The share sheet was dismissed or is unavailable. Nothing to do.
+    }
+  }, []);
+
   const renderItem = ({ item }: { item: LevelDefinition }) => {
     const done = completed.has(item.id);
     return (
@@ -26,7 +37,9 @@ export function LevelListScreen({ completed, onSelectLevel }: LevelListScreenPro
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Levels</Text>
+      <Pressable onLongPress={shareEventLog} delayLongPress={600} testID="level-list-title">
+        <Text style={styles.title}>Levels</Text>
+      </Pressable>
       <FlatList
         data={LEVELS}
         keyExtractor={(item) => String(item.id)}

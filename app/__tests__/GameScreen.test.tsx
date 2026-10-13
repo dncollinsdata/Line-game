@@ -9,6 +9,16 @@ import { LEVELS } from '../../lib/levels';
 import { generatePuzzle } from '../../engine/generate';
 import { cellCenter, makeLayout } from '../../components/layout';
 import { Board } from '../../components/Board';
+import { CELEBRATE_MS } from '../../components/PathLayer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readEvents } from '../../lib/eventLog';
+import { hapticCell, hapticCheckpoint, hapticWin } from '../../lib/haptics';
+
+jest.mock('../../lib/haptics', () => ({
+  hapticCell: jest.fn(),
+  hapticCheckpoint: jest.fn(),
+  hapticWin: jest.fn(),
+}));
 
 jest.mock('@shopify/react-native-skia', () => {
   const { View } = jest.requireActual('react-native');
@@ -38,12 +48,50 @@ function stroke(renderer: ReturnType<typeof create>, cells: number[]) {
   });
 }
 
+/**
+ * Like `stroke`, but one touch event per act, so React renders between cells
+ * the way it does on a device where every gesture event is its own JS task.
+ * Needed when a test checks per-cell side effects such as haptics.
+ */
+function strokeCellByCell(renderer: ReturnType<typeof create>, cells: number[]) {
+  const boardPx: number = renderer.root.findByType(Board).props.boardPx;
+  const layout = makeLayout(level.size, boardPx);
+  const at = (cell: number) => cellCenter(layout, cell);
+  act(() => {
+    fireGestureHandler<PanGesture>(getByGestureTestId('board-pan'), [
+      { state: State.BEGAN, ...at(cells[0]) },
+      { state: State.ACTIVE, ...at(cells[0]) },
+    ]);
+  });
+  for (const cell of cells.slice(1)) {
+    act(() => {
+      fireGestureHandler<PanGesture>(getByGestureTestId('board-pan'), [{ state: State.ACTIVE, ...at(cell) }]);
+    });
+  }
+}
+
+function pressButton(renderer: ReturnType<typeof create>, label: string) {
+  const button = renderer.root.findAllByType(Text).find((t) => t.props.children === label);
+  if (!button) throw new Error(`No button ${label}`);
+  let node = button.parent;
+  while (node && typeof node.props.onPress !== 'function') node = node.parent;
+  if (!node) throw new Error(`No pressable ancestor for ${label}`);
+  const press = node.props.onPress;
+  act(() => press());
+}
+const pressButtonIn = pressButton;
+
 function texts(renderer: ReturnType<typeof create>): string[] {
   return renderer.root.findAllByType(Text).map((t) => String(t.props.children));
 }
 
 describe('GameScreen', () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
   it('marks the level solved after drawing the full solution and offers the next level', async () => {
+    jest.useFakeTimers();
     const onSolved = jest.fn();
     let renderer!: ReturnType<typeof create>;
     act(() => {
@@ -55,7 +103,73 @@ describe('GameScreen', () => {
     stroke(renderer, solution);
     expect(onSolved).toHaveBeenCalledWith(level.id);
     expect(texts(renderer)).toContain('Solved');
+    // The next-level button waits for the win sweep to finish.
+    expect(texts(renderer)).not.toContain('Next level');
+    act(() => {
+      jest.advanceTimersByTime(CELEBRATE_MS + 100);
+    });
     expect(texts(renderer)).toContain('Next level');
+    expect(hapticWin).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+    await act(async () => renderer.unmount());
+  });
+
+  it('ticks haptics per entered cell and stronger on checkpoints', async () => {
+    jest.mocked(hapticCell).mockClear();
+    jest.mocked(hapticCheckpoint).mockClear();
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <GameScreen level={level} hasNext onSolved={() => {}} onNext={() => {}} onBack={() => {}} />,
+      );
+    });
+    // Checkpoint 1 is the first cell; the next two are plain cells for level 1.
+    strokeCellByCell(renderer, solution.slice(0, 3));
+    expect(hapticCheckpoint).toHaveBeenCalledTimes(1);
+    expect(hapticCell).toHaveBeenCalledTimes(2);
+    await act(async () => renderer.unmount());
+  });
+
+  it('logs level_start, then level_complete with steps removed and resets', async () => {
+    jest.useFakeTimers();
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <GameScreen level={level} hasNext onSolved={() => {}} onNext={() => {}} onBack={() => {}} />,
+      );
+    });
+    const press = (label: string) => pressButton(renderer, label);
+    stroke(renderer, solution.slice(0, 4));
+    stroke(renderer, [solution[3], solution[1]]); // drag back two cells
+    press('Reset');
+    stroke(renderer, solution);
+    await act(async () => {
+      jest.advanceTimersByTime(10);
+    });
+    const events = await readEvents();
+    const types = events.filter((e) => e.level === level.id).map((e) => e.type);
+    expect(types).toEqual(['level_start', 'level_complete']);
+    const complete = events.find((e) => e.type === 'level_complete');
+    expect(complete).toMatchObject({ level: level.id, steps_removed: 2, resets: 1 });
+    jest.useRealTimers();
+    await act(async () => renderer.unmount());
+  });
+
+  it('logs level_abandon with percent filled when leaving unsolved', async () => {
+    const onBack = jest.fn();
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <GameScreen level={level} hasNext onSolved={() => {}} onNext={() => {}} onBack={onBack} />,
+      );
+    });
+    stroke(renderer, solution.slice(0, 5)); // 5 of 25 cells
+    pressButton(renderer, 'Levels');
+    expect(onBack).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+    const events = await readEvents();
+    const abandon = events.filter((e) => e.type === 'level_abandon').pop();
+    expect(abandon).toMatchObject({ level: level.id, percent_filled: 20 });
     await act(async () => renderer.unmount());
   });
 
@@ -66,15 +180,7 @@ describe('GameScreen', () => {
         <GameScreen level={level} hasNext onSolved={() => {}} onNext={() => {}} onBack={() => {}} />,
       );
     });
-    const pressButton = (label: string) => {
-      const button = renderer.root.findAllByType(Text).find((t) => t.props.children === label);
-      if (!button) throw new Error(`No button ${label}`);
-      let node = button.parent;
-      while (node && typeof node.props.onPress !== 'function') node = node.parent;
-      if (!node) throw new Error(`No pressable ancestor for ${label}`);
-      const press = node.props.onPress;
-      act(() => press());
-    };
+    const pressButton = (label: string) => pressButtonIn(renderer, label);
     const pathCells = (): number => renderer.root.findByType(Board).props.path.length;
 
     stroke(renderer, solution.slice(0, 3));

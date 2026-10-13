@@ -4,5 +4,5 @@
     "strict": true,
     "types": ["jest"]
   },
-  "exclude": ["node_modules", "scripts", ".levelgen", "jest.config.js", "eslint.config.js"]
+  "exclude": ["node_modules", "scripts", ".levelgen", "jest.config.js", "jest.setup.js", "eslint.config.js"]
 }
