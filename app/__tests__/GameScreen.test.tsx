@@ -7,6 +7,7 @@ import type { PanGesture } from 'react-native-gesture-handler';
 import { GameScreen } from '../GameScreen';
 import { LEVELS } from '../../lib/levels';
 import { generatePuzzle } from '../../engine/generate';
+import { canExtend, endedEarly } from '../../engine/pathEdit';
 import { cellCenter, makeLayout } from '../../components/layout';
 import { Board } from '../../components/Board';
 import { CELEBRATE_MS } from '../../components/PathLayer';
@@ -27,6 +28,23 @@ jest.mock('@shopify/react-native-skia', () => {
 
 const level = LEVELS[0];
 const solution = generatePuzzle(level.size, level.seed).solution;
+
+/** A legal path that reaches the last checkpoint with cells still empty. */
+function findEarlyEnding(): number[] {
+  const cells = level.size * level.size;
+  const search = (path: number[]): number[] | null => {
+    if (endedEarly(level, path)) return path;
+    for (let cell = 0; cell < cells; cell++) {
+      if (!canExtend(level, path, cell)) continue;
+      const found = search([...path, cell]);
+      if (found) return found;
+    }
+    return null;
+  };
+  const found = search([level.checkpoints[0]]);
+  if (!found) throw new Error('No early-ending path for level 1');
+  return found;
+}
 
 /**
  * Simulate one finger stroke through `cells`. Gesture-handler delivers the
@@ -170,6 +188,31 @@ describe('GameScreen', () => {
     const events = await readEvents();
     const abandon = events.filter((e) => e.type === 'level_abandon').pop();
     expect(abandon).toMatchObject({ level: level.id, percent_filled: 20 });
+    await act(async () => renderer.unmount());
+  });
+
+  it('swaps the instruction for a hint when the path reaches the last number early', async () => {
+    let renderer!: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(
+        <GameScreen level={level} hasNext onSolved={() => {}} onNext={() => {}} onBack={() => {}} />,
+      );
+    });
+    const instruction = 'Connect the numbers in order and fill the grid.';
+    const hint = `Fill every square before ending on ${level.checkpoints.length}.`;
+    const early = findEarlyEnding();
+
+    stroke(renderer, early.slice(0, -1));
+    expect(texts(renderer)).toContain(instruction);
+    expect(texts(renderer)).not.toContain(hint);
+
+    stroke(renderer, early.slice(-2));
+    expect(texts(renderer)).toContain(hint);
+    expect(texts(renderer)).not.toContain(instruction);
+
+    pressButton(renderer, 'Undo');
+    expect(texts(renderer)).toContain(instruction);
+    expect(texts(renderer)).not.toContain(hint);
     await act(async () => renderer.unmount());
   });
 

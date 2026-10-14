@@ -84,6 +84,12 @@ export function isSolved(puzzle: Puzzle, path: CellIndex[]): boolean {
   return path.length === cells && path[cells - 1] === puzzle.checkpoints[puzzle.checkpoints.length - 1];
 }
 
+/** True when the path has reached the last checkpoint but left cells empty: a dead end. */
+export function endedEarly(puzzle: Puzzle, path: CellIndex[]): boolean {
+  const last = puzzle.checkpoints[puzzle.checkpoints.length - 1];
+  return path.length > 0 && path[path.length - 1] === last && path.length < puzzle.size * puzzle.size;
+}
+
 /** True if the path obeys every rule: a defensive check the UI can assert on. */
 export function isLegalPath(puzzle: Puzzle, path: CellIndex[]): boolean {
   let partial: CellIndex[] = [];

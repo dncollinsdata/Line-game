@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useReducer, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Board } from '../components/Board';
 import { CELEBRATE_MS } from '../components/PathLayer';
-import { checkpointNumber, isSolved } from '../engine/pathEdit';
+import { checkpointNumber, endedEarly, isSolved } from '../engine/pathEdit';
 import { appendEvent } from '../lib/eventLog';
 import { hapticCell, hapticCheckpoint, hapticWin } from '../lib/haptics';
 import { LevelDefinition } from '../lib/levels';
@@ -107,6 +107,7 @@ export function GameScreen({ level, hasNext, onSolved, onNext, onBack }: GameScr
   const [state, dispatch] = useReducer(reducer, undefined, makeInitialState);
   const { path, history, lastEdit, editSeq, stepsRemoved, resets, startedAt } = state;
   const solved = isSolved(level, path);
+  const stuck = endedEarly(level, path);
   const [celebrationDone, setCelebrationDone] = useState(false);
 
   useEffect(() => {
@@ -173,7 +174,12 @@ export function GameScreen({ level, hasNext, onSolved, onNext, onBack }: GameScr
         <Text style={styles.headerTitle}>Level {level.id}</Text>
         <View style={styles.headerSpacer} />
       </View>
-      <Text style={styles.hint}>Connect the numbers in order and fill the grid.</Text>
+      {/* Same slot as the instruction so the board never shifts when the hint appears. */}
+      <Text style={[styles.hint, stuck ? styles.hintStuck : null]}>
+        {stuck
+          ? `Fill every square before ending on ${level.checkpoints.length}.`
+          : 'Connect the numbers in order and fill the grid.'}
+      </Text>
       <Board
         puzzle={level}
         path={path}
@@ -251,6 +257,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#5b6070',
     marginBottom: 20,
+  },
+  hintStuck: {
+    color: '#c2410c',
+    fontWeight: '600',
   },
   controls: {
     marginTop: 24,

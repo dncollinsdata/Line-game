@@ -1,4 +1,4 @@
-import { applyCell, canExtend, isLegalPath, isSolved, nextCheckpoint } from '../pathEdit';
+import { applyCell, canExtend, endedEarly, isLegalPath, isSolved, nextCheckpoint } from '../pathEdit';
 import { Puzzle } from '../types';
 import { generatePuzzle } from '../generate';
 
@@ -90,6 +90,15 @@ describe('isSolved', () => {
       for (const cell of generated.solution) path = applyCell(generated, path, cell);
       expect(path).toEqual(generated.solution);
     }
+  });
+});
+
+describe('endedEarly', () => {
+  it('is true only when the head is on the last checkpoint with cells still empty', () => {
+    expect(endedEarly(puzzle, [0, 3, 4, 1, 2])).toBe(true);
+    expect(endedEarly(puzzle, [0, 3, 6, 7, 8, 5, 4, 1, 2])).toBe(false); // solved
+    expect(endedEarly(puzzle, [0, 3, 4, 1])).toBe(false); // not on the last checkpoint
+    expect(endedEarly(puzzle, [])).toBe(false);
   });
 });
 
