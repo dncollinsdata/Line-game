@@ -31,7 +31,8 @@
     "test": "jest",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "generate-levels": "tsc -p scripts/tsconfig.json && node .levelgen/scripts/generate-levels.js"
+    "generate-levels": "tsc -p scripts/tsconfig.json && node .levelgen/scripts/generate-levels.js",
+    "summarize-log": "tsc -p scripts/tsconfig.json && node .levelgen/scripts/summarize-log.js"
   },
   "private": true
 }

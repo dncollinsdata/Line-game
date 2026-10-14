@@ -6,10 +6,20 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "outDir": "../.levelgen",
-    "rootDir": ".."
+    "rootDir": "..",
+    "resolveJsonModule": true
   },
-  "include": ["../engine/**/*.ts", "./*.ts"],
-  "exclude": ["../engine/__tests__"]
+  "include": [
+    "../engine/**/*.ts",
+    "../lib/logSummary.ts",
+    "../lib/eventLog.ts",
+    "./*.ts"
+  ],
+  "exclude": [
+    "../engine/__tests__"
+  ]
 }
